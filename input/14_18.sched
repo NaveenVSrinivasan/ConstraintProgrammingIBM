@@ -1,0 +1,13 @@
+Business_numWeeks: 2
+Business_numDays: 14
+Business_numEmployees: 18
+Business_numShifts: 4
+Business_numIntervalsInDay: 24
+Business_minDemandDayShift: 0 1 3 2 0 1 3 2 0 1 3 2 0 1 5 2 0 1 5 2 0 1 5 2 0 1 5 2 0 1 5 2 0 1 5 2 0 1 5 2 0 1 5 2 0 1 5 2 0 1 5 2 0 1 5 2
+Business_minDailyOperation: 101
+Employee_minConsecutiveWork: 4
+Employee_maxDailyWork: 8
+Employee_minWeeklyWork: 20
+Employee_maxWeeklyWork: 40
+Employee_maxConsecutiveNigthShift: 1
+Employee_maxTotalNigthShift: 2
