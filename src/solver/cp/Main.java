@@ -29,30 +29,9 @@ public class Main
     Timer watch = new Timer();
     watch.start();
     CPInstance instance = new CPInstance(input);
-    instance.solveAustraliaBinary();
+    instance.solve();
     watch.stop();
      
-    // OUTPUT FORMAT
-    System.out.println("Instance: " + "Binary" + 
-                       " Time: " + String.format("%.2f",watch.getTime()) +
-                       " Result: " + instance.cp.getInfo(IloCP.IntInfo.NumberOfFails));
- 
-    watch.start();
-    instance.solveAustraliaGlobal();
-    watch.stop();
-     
-    // OUTPUT FORMAT
-    System.out.println("Instance: " + "Global" + 
-                       " Time: " + String.format("%.2f",watch.getTime()) +
-                       " Result: " + instance.cp.getInfo(IloCP.IntInfo.NumberOfFails));
-
-    watch.start();
-    instance.solveSendMoreMoney();
-    watch.stop();
-     
-    // OUTPUT FORMAT
-    System.out.println("Instance: " + "SMM" + 
-                       " Time: " + String.format("%.2f",watch.getTime()) +
-                       " Result: " + instance.cp.getInfo(IloCP.IntInfo.NumberOfFails));
+    
   }
 }
