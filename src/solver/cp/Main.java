@@ -24,7 +24,6 @@ public class Main
    	String input = args[0];
 	Path path = Paths.get(input);
 	String filename = path.getFileName().toString();
-	System.out.println("Instance: " + input);
      
     Timer watch = new Timer();
     watch.start();
@@ -32,6 +31,12 @@ public class Main
     instance.solve();
     watch.stop();
      
-    
+    System.out.println(String.format(
+    	"Instance: %s Time: %.2f Result: %d Solution: %s",
+    	filename,
+    	watch.getTime(),
+    	instance.cp.getInfo(IloCP.IntInfo.NumberOfFails),
+    	instance.getSolution()
+    ));
   }
 }

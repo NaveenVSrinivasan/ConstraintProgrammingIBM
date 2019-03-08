@@ -31,8 +31,7 @@ public class CPInstance
   int maxConsecutiveNightShift;
   int maxTotalNightShift;
 
-  int shiftLength;
-  List<List<EmployeeState>> matrix;
+  EmployeeState[][] matrix;
 
   // ILOG CP Solver
   IloCP cp;
@@ -104,7 +103,6 @@ public class CPInstance
           maxTotalNightShift = Integer.parseInt(values[1]);
         }
       }
-      shiftLength = numIntervalsInDay / (numShifts - 1);
     }
     catch (FileNotFoundException e)
     {
@@ -116,61 +114,69 @@ public class CPInstance
   {
     cp = new IloCP();
 
-    matrix = new ArrayList<>(numEmployees);
+    matrix = new EmployeeState[numEmployees][numDays];
     for (int i = 0; i < numEmployees; i++) {
-      List<EmployeeState> states = new ArrayList<EmployeeState>(numDays);
       for (int j = 0; j < numDays; j++) {
-        states.add(new EmployeeState(this, j < numShifts ? null : states.get(j - 1)));
+        matrix[i][j] = new EmployeeState(this, j < numShifts ? null : matrix[i][j - 1]);
       }
-      matrix.add(states);
     }
 
     // Training requirement
     for (int i = 0; i < numEmployees; i++) {
-      List<EmployeeState> states = matrix.get(i).subList(0, numShifts);
-      IloIntVar[] shifts = new IloIntVar[4];
-      for (int j = 0; j < shifts.length; j++) {
-        shifts[j] = states.get(j).shift;
+      IloIntVar[] shifts = new IloIntVar[numShifts];
+      for (int j = 0; j < numShifts; j++) {
+        shifts[j] = matrix[i][j].shift;
       }
       cp.add(cp.allDiff(shifts));
     }
 
     // Weekly hours requirements
     for (int i = 0; i < numEmployees; i++) {
-      List<EmployeeState> states = matrix.get(i);
       IloIntExpr[] hours = new IloIntExpr[numDays];
-      for (int k = 0; k < hours.length; k++) {
-        hours[k] = states.get(k).length;
+      for (int j = 0; j < hours.length; j++) {
+        hours[j] = matrix[i][j].length;
       }
+
       IloIntExpr sum = cp.sum(Arrays.copyOfRange(hours, 0, 7));
       cp.add(cp.ge(sum, minWeeklyWork));
       cp.add(cp.le(sum, maxWeeklyWork));
 
       for (int j = 1; j < numDays - 7; j++) {
-        sum = cp.sum(cp.diff(sum, hours[j-1]), hours[j+7]);
+        sum = cp.sum(cp.diff(sum, hours[j-1]), hours[j+6]);
         cp.add(cp.ge(sum, minWeeklyWork));
         cp.add(cp.le(sum, maxWeeklyWork));
       }
     }
+    // for (int i = 0; i < numEmployees; i++) {
+    //   for (int j = 0; j < numDays - 7; j++) {
+    //     IloIntExpr[] hours = new IloIntExpr[7];
+    //     for (int k = 0; k < 7; k++) {
+    //       hours[k] = matrix[i][j+k].length;
+    //     }
+    //     IloIntExpr sum = cp.sum(hours);
+    //     cp.add(cp.ge(sum, minWeeklyWork));
+    //     cp.add(cp.le(sum, maxWeeklyWork));
+    //   }
+    // }
 
     // Minimum daily operation
     for (int i = 0; i < numDays; i++) {
       IloIntExpr[] hours = new IloIntExpr[numEmployees];
       for (int j = 0; j < numEmployees; j++) {
-        hours[j] = matrix.get(j).get(i).length;
+        hours[j] = matrix[j][i].length;
       }
       IloIntExpr sum = cp.sum(hours);
       cp.add(cp.ge(sum, minDailyOperation));
     }
 
     // Maximum night shifts
-    for (List<EmployeeState> states : matrix) {
-      IloIntVar[] shifts = new IloIntVar[numDays];
-      for (int i = 0; i < numDays; i++) {
-        shifts[i] = states.get(i).shift;
+    for (EmployeeState[] states : matrix) {
+      IloIntVar[] shifts = new IloIntVar[numDays-numShifts];
+      for (int i = 0; i < numDays-numShifts; i++) {
+        shifts[i] = states[i+numShifts].shift;
       }
       cp.add(
-        cp.le(
+        cp.lt(
           cp.count(shifts, numShifts-1),
           maxTotalNightShift
         )
@@ -181,7 +187,7 @@ public class CPInstance
     for (int i = 0; i < numDays; i++) {
       IloIntVar[] shifts = new IloIntVar[numEmployees];
       for (int j = 0; j < numEmployees; j++) {
-        shifts[j] = matrix.get(j).get(i).shift;
+        shifts[j] = matrix[j][i].shift;
       }
 
       for (int j = 0; j < numShifts; j++) {
@@ -409,4 +415,37 @@ public class CPInstance
     }
   }
 
+  String getSolution() {
+    StringBuilder sb = new StringBuilder();
+    for (int i = 0; i < numDays; i++) {
+      if (i > 0) sb.append(" ");
+      for (int j = 0; j < numEmployees; j++) {
+        if (j > 0) sb.append(" ");
+        EmployeeState state = matrix[j][i];
+        int shift = (int)cp.getValue(state.shift);
+        int start, end;
+        switch (shift) {
+          case 0:
+            start = end = -1;
+            break;
+          case 1:
+            start = 8;
+            end = start + (int)cp.getValue(state.length);
+            break;
+          case 2:
+            start = 16;
+            end = start + (int)cp.getValue(state.length);
+            break;
+          case 3:
+            start = 0;
+            end = start + (int)cp.getValue(state.length);
+            break;
+          default:
+            throw new IllegalStateException(String.format("shift assigned value of %d", shift));
+        }
+        sb.append(String.format("%d %d", start, end));
+      }
+    }
+    return sb.toString();
+  }
 }

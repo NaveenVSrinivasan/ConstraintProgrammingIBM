@@ -4,11 +4,10 @@ import ilog.concert.*;
 
 public class EmployeeState {
   IloIntVar shift;
-  IloIntervalVar interval;
   IloIntExpr length;
 
   public EmployeeState(CPInstance instance, EmployeeState yesterday) throws IloException {
-    shift = instance.cp.intVar(0, instance.numShifts);
+    shift = instance.cp.intVar(0, instance.numShifts-1);
     length = instance.cp.intVar(0, instance.maxDailyWork);
 
     IloConstraint off = instance.cp.eq(length, 0);
