@@ -7,6 +7,8 @@ import ilog.concert.*;
 import java.io.File;
 import java.io.FileNotFoundException;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Scanner;
 
 public class CPInstance
@@ -27,6 +29,8 @@ public class CPInstance
   int maxWeeklyWork;
   int maxConsecutiveNightShift;
   int maxTotalNightShift;
+
+  int shiftLength;
 
   // ILOG CP Solver
   IloCP cp;
@@ -98,6 +102,7 @@ public class CPInstance
           maxTotalNightShift = Integer.parseInt(values[1]);
         }
       }
+      shiftLength = numIntervalsInDay / (numShifts - 1);
     }
     catch (FileNotFoundException e)
     {
@@ -105,21 +110,136 @@ public class CPInstance
     }
   }
 
-  public void solve()
+  private class WorkerState {
+    IloIntVar shift;
+    IloIntVar start;
+    IloIntVar end;
+    IloIntExpr hours;
+
+    WorkerState(IloCP cp, WorkerState previousDay) throws IloException {
+      shift = cp.intVar(0, numShifts);
+      start = cp.intVar(-1, numIntervalsInDay);
+      end = cp.intVar(-1, numIntervalsInDay);
+      hours = cp.diff(end, start);
+
+      // start <= end
+      cp.add(cp.le(start, end));
+
+      // (start == end) <=> (shift == 0 /\ start == -1 /\ end == -1)
+      cp.add(
+        cp.equiv(
+          cp.eq(start, end),
+          cp.and(
+            cp.eq(shift, 0),
+            cp.and(cp.eq(start, -1), cp.eq(end, -1))
+          )
+        )
+      );
+
+      // (end - start == 0) \/ ((end - start >= minConsecutiveWork) /\ (end - start <= maxDailyWork))
+      cp.add(
+        cp.or(
+          cp.eq(hours, 0),
+          cp.and(cp.ge(hours, minConsecutiveWork), cp.le(hours, maxDailyWork))
+        )
+      );
+
+      // (start >= (shift - 1) * shiftLength) /\ (end < (shift * shiftLength))
+      cp.add(
+        cp.and(
+          cp.ge(
+            start,
+            cp.prod(cp.diff(shift, 1), shiftLength)
+          ),
+          cp.lt(
+            end,
+            cp.prod(shift, shiftLength)
+          )
+        )
+      );
+
+      // If the previous day's shift was the night shift, then today's shift cannot be
+      if (previousDay != null) {
+        cp.add(cp.imply(cp.eq(previousDay.shift, numShifts-1), cp.neq(shift, numShifts-1)));
+      }
+    }
+  }
+
+  public void solve() throws IloException
   {
     try
     {
       cp = new IloCP();
 
-        // TODO: Employee Scheduling Model Goes Here
-        String[] Shifts = {"off", "day", "evening", "night"};
-        for (int w = 0; w < numWeeks; w++)
-            for (int d = 0; d < numDays; d++)
-                for (int i = 0; i < numEmployees; i++)
-                    IloIntVar workerI = cp.intVar(0, 3);
+      List<List<WorkerState>> matrix = new ArrayList<>();
+      for (int i = 0; i < numEmployees; i++) {
+        List<WorkerState> states = new ArrayList<WorkerState>();
+        for (int j = 0; j < numDays; j++) {
+          states.add(new WorkerState(cp, j == 0 ? null : states.get(j - 1)));
+        }
+        matrix.add(states);
+      }
 
+      // Training requirement
+      for (int i = 0; i < numEmployees; i++) {
+        List<WorkerState> states = matrix.get(i).subList(0, numShifts);
+        IloIntVar[] shifts = new IloIntVar[4];
+        for (int j = 0; j < shifts.length; j++) {
+          shifts[j] = states.get(j).shift;
+        }
+        cp.add(cp.allDiff(shifts));
+      }
 
+      // Weekly hours requirements
+      for (int i = 0; i < numEmployees; i++) {
+        for (int j = 0; j < numDays - 7; j++) {
+          List<WorkerState> states = matrix.get(i).subList(j, j+7);
+          IloIntExpr[] hours = new IloIntExpr[7];
+          for (int k = 0; k < hours.length; k++) {
+            hours[k] = states.get(k).hours;
+          }
+          IloIntExpr sum = cp.sum(hours);
+          cp.add(cp.ge(sum, minWeeklyWork));
+          cp.add(cp.le(sum, maxWeeklyWork));
+        }
+      }
 
+      // Minimum daily operation
+      for (int i = 0; i < numDays; i++) {
+        IloIntExpr[] hours = new IloIntExpr[numEmployees];
+        for (int j = 0; j < numEmployees; j++) {
+          hours[j] = matrix.get(j).get(i).hours;
+        }
+        IloIntExpr sum = cp.sum(hours);
+        cp.add(cp.ge(sum, minDailyOperation));
+      }
+
+      // Maximum consecutive night shift
+      for (List<WorkerState> states : matrix) {
+        IloIntVar[] shifts = new IloIntVar[numDays];
+        for (int i = 0; i < numDays; i++) {
+          shifts[i] = states.get(i).shift;
+        }
+        cp.add(
+          cp.le(
+            cp.count(shifts, numShifts-1),
+            maxTotalNightShift
+          )
+        );
+      }
+
+      // Minimum demand
+      for (int i = 0; i < numDays; i++) {
+        IloIntVar[] shifts = new IloIntVar[numEmployees];
+        for (int j = 0; j < numEmployees; j++) {
+          shifts[j] = matrix.get(j).get(i).shift;
+        }
+
+        for (int j = 0; j < numShifts; j++) {
+          IloIntExpr count = cp.count(shifts, j);
+          cp.add(cp.ge(count, minDemandDayShift[i][j]));
+        }
+      }
 
         // Important: Do not change! Keep these parameters as is
         cp.setParameter(IloCP.IntParam.Workers, 1);
