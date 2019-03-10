@@ -3,28 +3,20 @@ package solver.cp;
 import ilog.concert.*;
 
 public class EmployeeState {
-  IloIntVar shift;
-  IloIntExpr length;
+  IloIntVar working, shift, length;
 
   public EmployeeState(CPInstance instance, EmployeeState yesterday) throws IloException {
+    working = instance.cp.intVar(0, 1);
     shift = instance.cp.intVar(0, instance.numShifts-1);
-    length = instance.cp.intVar(0, instance.maxDailyWork);
+    length = instance.cp.intVar(instance.minConsecutiveWork, instance.maxDailyWork);
 
-    IloConstraint off = instance.cp.eq(length, 0);
-
-    // (length == 0) \/ ((length >= minConsecutiveWork) /\ (length <= maxDailyWork))
+    // (working == 0) <=> (shift == 0)
     instance.cp.add(
-      instance.cp.or(
-        off,
-        instance.cp.and(
-          instance.cp.ge(length, instance.minConsecutiveWork),
-          instance.cp.le(length, instance.maxDailyWork)
-        )
+      instance.cp.equiv(
+        instance.cp.eq(working, 0),
+        instance.cp.eq(shift, 0)
       )
     );
-
-    // (length == 0) <=> (shift == 0)
-    instance.cp.add(instance.cp.equiv(off, instance.cp.eq(shift, 0)));
 
     // If yesterday's shift was the night shift, then today's shift cannot be
     if (yesterday != null) {

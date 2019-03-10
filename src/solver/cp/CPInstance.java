@@ -132,48 +132,37 @@ public class CPInstance
 
     // Weekly hours requirements
     for (int i = 0; i < numEmployees; i++) {
-      IloIntExpr[] hours = new IloIntExpr[numDays];
-      for (int j = 0; j < hours.length; j++) {
-        hours[j] = matrix[i][j].length;
+      IloIntVar[] lengths = new IloIntVar[numDays];
+      IloIntVar[] working = new IloIntVar[numDays];
+      for (int j = 0; j < numDays; j++) {
+        lengths[j] = matrix[i][j].length;
+        working[j] = matrix[i][j].working;
       }
-
-      IloIntExpr sum = cp.sum(Arrays.copyOfRange(hours, 0, 7));
-      cp.add(cp.ge(sum, minWeeklyWork));
-      cp.add(cp.le(sum, maxWeeklyWork));
-
-      for (int j = 1; j < numDays - 7; j++) {
-        sum = cp.sum(cp.diff(sum, hours[j-1]), hours[j+6]);
-        cp.add(cp.ge(sum, minWeeklyWork));
-        cp.add(cp.le(sum, maxWeeklyWork));
+      for (int j = 0; j <= numDays - 7; j++) {
+        IloIntExpr prod = cp.scalProd(lengths, working, j, 7);
+        cp.add(cp.ge(prod, minWeeklyWork));
+        cp.add(cp.le(prod, maxWeeklyWork));
       }
     }
-    // for (int i = 0; i < numEmployees; i++) {
-    //   for (int j = 0; j < numDays - 7; j++) {
-    //     IloIntExpr[] hours = new IloIntExpr[7];
-    //     for (int k = 0; k < 7; k++) {
-    //       hours[k] = matrix[i][j+k].length;
-    //     }
-    //     IloIntExpr sum = cp.sum(hours);
-    //     cp.add(cp.ge(sum, minWeeklyWork));
-    //     cp.add(cp.le(sum, maxWeeklyWork));
-    //   }
-    // }
 
     // Minimum daily operation
     for (int i = 0; i < numDays; i++) {
-      IloIntExpr[] hours = new IloIntExpr[numEmployees];
+      IloIntVar[] lengths = new IloIntVar[numEmployees];
+      IloIntVar[] working = new IloIntVar[numEmployees];
       for (int j = 0; j < numEmployees; j++) {
-        hours[j] = matrix[j][i].length;
+        lengths[j] = matrix[j][i].length;
+        working[j] = matrix[j][i].working;
       }
-      IloIntExpr sum = cp.sum(hours);
-      cp.add(cp.ge(sum, minDailyOperation));
+      IloIntExpr prod = cp.scalProd(lengths, working);
+      cp.add(cp.ge(prod, minDailyOperation));
     }
 
     // Maximum night shifts
-    for (EmployeeState[] states : matrix) {
+    IloIntVar[] counts = new IloIntVar[numEmployees];
+    for (int i = 0; i < numEmployees; i++) {
       IloIntVar[] shifts = new IloIntVar[numDays-numShifts];
-      for (int i = 0; i < numDays-numShifts; i++) {
-        shifts[i] = states[i+numShifts].shift;
+      for (int j = 0; j < numDays-numShifts; j++) {
+        shifts[j] = matrix[i][j+numShifts].shift;
       }
       cp.add(
         cp.lt(
@@ -184,17 +173,31 @@ public class CPInstance
     }
 
     // Minimum demand
+    int[] weights = new int[numEmployees];
+    Arrays.fill(weights, 1);
     for (int i = 0; i < numDays; i++) {
+      IloIntVar[] demand = new IloIntVar[numShifts];
+      for (int j = 0; j < numShifts; j++) {
+        demand[j] = cp.intVar(minDemandDayShift[i][j], numEmployees);
+      }
       IloIntVar[] shifts = new IloIntVar[numEmployees];
       for (int j = 0; j < numEmployees; j++) {
         shifts[j] = matrix[j][i].shift;
       }
-
-      for (int j = 0; j < numShifts; j++) {
-        IloIntExpr count = cp.count(shifts, j);
-        cp.add(cp.ge(count, minDemandDayShift[i][j]));
-      }
+      cp.add(cp.pack(demand, shifts, weights));
     }
+
+    // for (int i = 0; i < numDays; i++) {
+    //   IloIntVar[] shifts = new IloIntVar[numEmployees];
+    //   for (int j = 0; j < numEmployees; j++) {
+    //     shifts[j] = matrix[j][i].shift;
+    //   }
+
+    //   for (int j = 0; j < numShifts; j++) {
+    //     IloIntExpr count = cp.count(shifts, j);
+    //     cp.add(cp.ge(count, minDemandDayShift[i][j]));
+    //   }
+    // }
 
     // Important: Do not change! Keep these parameters as is
     cp.setParameter(IloCP.IntParam.Workers, 1);
