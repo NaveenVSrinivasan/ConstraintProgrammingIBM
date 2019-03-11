@@ -24,8 +24,8 @@ public class EmployeeState {
     // If yesterday's shift was the night shift, then today's shift cannot be
     if (yesterday != null) {
       instance.cp.add(instance.cp.imply(
-        instance.cp.eq(yesterday.shift, instance.numShifts-1),
-        instance.cp.neq(shift, instance.numShifts-1)
+        instance.cp.eq(yesterday.shift, instance.NIGHT_SHIFT),
+        instance.cp.neq(shift, instance.NIGHT_SHIFT)
       ));
     }
   }

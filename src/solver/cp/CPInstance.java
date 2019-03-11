@@ -32,6 +32,8 @@ public class CPInstance
   int maxConsecutiveNightShift;
   int maxTotalNightShift;
 
+  final int NIGHT_SHIFT = 1;
+
   EmployeeState[][] matrix;
 
   // ILOG CP Solver
@@ -163,7 +165,7 @@ public class CPInstance
         shifts[j] = matrix[i][j+numShifts].shift;
       }
 
-      cp.add(cp.lt(cp.count(shifts, numShifts-1), maxTotalNightShift));
+      cp.add(cp.lt(cp.count(shifts, NIGHT_SHIFT), maxTotalNightShift));
     }
 
     // Minimum demand
@@ -399,6 +401,9 @@ public class CPInstance
   }
 
   String getSolution() {
+    int[][] beginED = new int[numEmployees][numDays];
+    int[][] endED = new int[numEmployees][numDays];
+
     StringBuilder sb = new StringBuilder();
     for (int i = 0; i < numDays; i++) {
       if (i > 0) sb.append(" ");
@@ -426,9 +431,12 @@ public class CPInstance
           default:
             throw new IllegalStateException(String.format("shift assigned value of %d", shift));
         }
+        beginED[j][i] = start;
+        endED[j][i] = end;
         sb.append(String.format("%d %d", start, end));
       }
     }
+    prettyPrint(numEmployees, numDays, beginED, endED);
     return sb.toString();
   }
 }
