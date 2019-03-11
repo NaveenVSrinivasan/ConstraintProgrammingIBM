@@ -122,17 +122,6 @@ public class CPInstance
       }
     }
 
-    // Break symmetry
-    // IloIntVar[][] allShifts = new IloIntVar[numEmployees][numDays];
-    // for (int i = 0; i < numEmployees; i++) {
-    //   for (int j = 0; j < numDays; j++) {
-    //     allShifts[i][j] = matrix[i][j].shift;
-    //   }
-    //   if (i > 0) {
-    //     cp.add(cp.lexicographic(allShifts[i], allShifts[i-1]));
-    //   }
-    // }
-
     // Training requirement
     for (int i = 0; i < numEmployees; i++) {
       IloIntVar[] shifts = new IloIntVar[numShifts];
@@ -145,41 +134,29 @@ public class CPInstance
     // Weekly hours requirements
     for (int i = 0; i < numEmployees; i++) {
       IloIntVar[] lengths = new IloIntVar[numDays];
-      // IloIntVar[] working = new IloIntVar[numDays];
       for (int j = 0; j < numDays; j++) {
         lengths[j] = matrix[i][j].length;
-        // working[j] = matrix[i][j].working;
       }
-      for (int j = 0; j <= numDays - 7; j++) {
+
+      for (int j = 0; j <= numDays - 7; j += 7) {
         IloIntExpr sum = cp.sum(lengths, j, 7);
         cp.add(cp.ge(sum, minWeeklyWork));
         cp.add(cp.le(sum, maxWeeklyWork));
-
-        // IloIntExpr prod = cp.scalProd(lengths, working, j, 7);
-        // cp.add(cp.ge(prod, minWeeklyWork));
-        // cp.add(cp.le(prod, maxWeeklyWork));
       }
     }
 
     // Minimum daily operation
     for (int i = 0; i < numDays; i++) {
       IloIntVar[] lengths = new IloIntVar[numEmployees];
-      // IloIntVar[] working = new IloIntVar[numEmployees];
       for (int j = 0; j < numEmployees; j++) {
         lengths[j] = matrix[j][i].length;
-        // working[j] = matrix[j][i].working;
       }
+
       IloIntExpr sum = cp.sum(lengths);
       cp.add(cp.ge(sum, minDailyOperation));
-
-      // IloIntExpr prod = cp.scalProd(lengths, working);
-      // cp.add(cp.ge(prod, minDailyOperation));
     }
 
-    int[] shiftValues = IntStream.range(0, numShifts).toArray();
-
     // Maximum night shifts
-    IloIntVar[] counts = new IloIntVar[numEmployees];
     for (int i = 0; i < numEmployees; i++) {
       IloIntVar[] shifts = new IloIntVar[numDays-numShifts];
       for (int j = 0; j < numDays-numShifts; j++) {
@@ -187,33 +164,15 @@ public class CPInstance
       }
 
       cp.add(cp.lt(cp.count(shifts, numShifts-1), maxTotalNightShift));
-
-      // IloIntVar[] cards = new IloIntVar[numShifts];
-      // for (int j = 0; j < numShifts-1; j++) {
-      //   cards[j] = cp.intVar(0, numDays-numShifts);
-      // }
-      // cards[numShifts-1] = cp.intVar(0, maxTotalNightShift-1);
-      // cp.add(cp.distribute(cards, shiftValues, shifts));
     }
 
-    // // Minimum demand
-    // for (int i = 0; i < numDays; i++) {
-    //   IloIntVar[] demand = new IloIntVar[numShifts];
-    //   for (int j = 0; j < numShifts; j++) {
-    //     demand[j] = cp.intVar(minDemandDayShift[i][j], numEmployees);
-    //   }
-    //   IloIntVar[] shifts = new IloIntVar[numEmployees];
-    //   for (int j = 0; j < numEmployees; j++) {
-    //     shifts[j] = matrix[j][i].shift;
-    //   }
-    //   cp.add(cp.distribute(demand, shiftValues, shifts));
-    // }
-
+    // Minimum demand
     for (int i = 0; i < numDays; i++) {
       IloIntVar[] shifts = new IloIntVar[numEmployees];
       for (int j = 0; j < numEmployees; j++) {
         shifts[j] = matrix[j][i].shift;
       }
+
       for (int j = 0; j < numShifts; j++) {
         IloIntExpr count = cp.count(shifts, j);
         cp.add(cp.ge(count, minDemandDayShift[i][j]));
