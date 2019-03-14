@@ -124,6 +124,17 @@ public class CPInstance
       }
     }
 
+    // Break symmetry
+    IloIntVar[][] allShifts = new IloIntVar[numEmployees][numDays];
+    for (int i = 0; i < numEmployees; i++) {
+      for (int j = 0; j < numDays; j++) {
+        allShifts[i][j] = matrix[i][j].shift;
+      }
+      if (i > 0) {
+        cp.add(cp.lexicographic(allShifts[i], allShifts[i-1]));
+      }
+    }
+
     // Training requirement
     for (int i = 0; i < numEmployees; i++) {
       IloIntVar[] shifts = new IloIntVar[numShifts];
@@ -184,7 +195,7 @@ public class CPInstance
     // Important: Do not change! Keep these parameters as is
     cp.setParameter(IloCP.IntParam.Workers, 1);
     cp.setParameter(IloCP.DoubleParam.TimeLimit, 300);
-    // cp.setParameter(IloCP.IntParam.SearchType, IloCP.ParameterValues.DepthFirst);
+    cp.setParameter(IloCP.IntParam.SearchType, IloCP.ParameterValues.DepthFirst);
 
     // Uncomment this: to set the solver output level if you wish
     // cp.setParameter(IloCP.IntParam.LogVerbosity, IloCP.ParameterValues.Quiet);
