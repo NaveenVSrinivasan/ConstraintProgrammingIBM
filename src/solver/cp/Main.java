@@ -36,7 +36,7 @@ public class Main
     	filename,
     	watch.getTime(),
     	instance.cp.getInfo(IloCP.IntInfo.NumberOfFails),
-    	instance.getSolution()
+    	instance.verifyAndGetSolution()
     ));
   }
 }

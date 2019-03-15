@@ -23,6 +23,7 @@ public class CPInstance
   int numIntervalsInDay;
   int[][] minDemandDayShift;
   int minDailyOperation;
+  final int NIGHT_SHIFT = 1;
 
   // EMPLOYEE parameters
   int minConsecutiveWork;
@@ -31,8 +32,7 @@ public class CPInstance
   int maxWeeklyWork;
   int maxConsecutiveNightShift;
   int maxTotalNightShift;
-
-  final int NIGHT_SHIFT = 1;
+  int[] lengths;
 
   EmployeeState[][] matrix;
 
@@ -111,6 +111,12 @@ public class CPInstance
     {
       System.out.println("Error: file not found " + fileName);
     }
+
+    lengths = new int[(maxDailyWork-minConsecutiveWork)+2];
+    lengths[0] = 0;
+    for (int i = 1; i < lengths.length; i++) {
+      lengths[i] = minConsecutiveWork + (i - 1);
+    }
   }
 
   public void solve() throws IloException
@@ -120,18 +126,20 @@ public class CPInstance
     matrix = new EmployeeState[numEmployees][numDays];
     for (int i = 0; i < numEmployees; i++) {
       for (int j = 0; j < numDays; j++) {
-        matrix[i][j] = new EmployeeState(this, j < numShifts ? null : matrix[i][j - 1]);
+        matrix[i][j] = new EmployeeState(this, j < numShifts ? null : matrix[i][j-1]);
       }
     }
 
     // Break symmetry
-    IloIntVar[][] allShifts = new IloIntVar[numEmployees][numDays];
-    for (int i = 0; i < numEmployees; i++) {
-      for (int j = 0; j < numDays; j++) {
-        allShifts[i][j] = matrix[i][j].shift;
-      }
-      if (i > 0) {
-        cp.add(cp.lexicographic(allShifts[i], allShifts[i-1]));
+    {
+      IloIntVar[][] shifts = new IloIntVar[numEmployees][numDays];
+      for (int i = 0; i < numEmployees; i++) {
+        for (int j = 0; j < numDays; j++) {
+          shifts[i][j] = matrix[i][j].shift;
+        }
+        if (i > 0) {
+          cp.add(cp.lexicographic(shifts[i], shifts[i-1]));
+        }
       }
     }
 
@@ -192,187 +200,50 @@ public class CPInstance
       }
     }
 
-    // Important: Do not change! Keep these parameters as is
+    IloVarSelector[] varSelector = new IloVarSelector[3];
+    varSelector[0] = cp.selectSmallest(cp.domainSize());
+    varSelector[1] = cp.selectSmallest(cp.varImpact());
+    varSelector[2] = cp.selectRandomVar();
+
+    IloValueSelector valueSelector = cp.selectLargest(cp.value());
+
+    IloIntVar[] trainingVars = new IloIntVar[2*numEmployees*numShifts];
+    int index = 0;
+    for (int i = 0; i < numEmployees; i++) {
+      for (int j = 0; j < numShifts; j++) {
+        trainingVars[index++] = matrix[i][j].shift;
+        trainingVars[index++] = matrix[i][j].length;
+      }
+    }
+
+    IloSearchPhase trainingPhase = cp.searchPhase(trainingVars, cp.intVarChooser(varSelector),
+        cp.intValueChooser(valueSelector));
+
+    IloIntVar[] otherVars = new IloIntVar[2*numEmployees*(numDays-numShifts)];
+    index = 0;
+    for (int i = 0; i < numEmployees; i++) {
+      for (int j = numShifts; j < numDays; j++) {
+        otherVars[index++] = matrix[i][j].shift;
+        otherVars[index++] = matrix[i][j].length;
+      }
+    }
+
+    IloSearchPhase otherPhase = cp.searchPhase(otherVars, cp.intVarChooser(varSelector),
+        cp.intValueChooser(valueSelector));
+
     cp.setParameter(IloCP.IntParam.Workers, 1);
     cp.setParameter(IloCP.DoubleParam.TimeLimit, 300);
     cp.setParameter(IloCP.IntParam.SearchType, IloCP.ParameterValues.DepthFirst);
 
-    // Uncomment this: to set the solver output level if you wish
-    // cp.setParameter(IloCP.IntParam.LogVerbosity, IloCP.ParameterValues.Quiet);
-    if(cp.solve())
+    IloSearchPhase[] phases = new IloSearchPhase[]{trainingPhase, otherPhase};
+    if(cp.solve(phases))
     {
       cp.printInformation();
-
-      // Uncomment this: for poor man's Gantt Chart to display schedules
-      // prettyPrint(numEmployees, numDays, beginED, endED);
     }
     else
     {
       System.out.println("No Solution found!");
       System.out.println("Number of fails: " + cp.getInfo(IloCP.IntInfo.NumberOfFails));
-    }
-  }
-
-  // SK: technically speaking, the model with the global constaints
-  // should result in fewer number of fails. In this case, the problem
-  // is so simple that, the solver is able to retransform the model
-  // and replace inequalities with the global all different constrains.
-  // Therefore, the results don't really differ
-  void solveAustraliaGlobal()
-  {
-    String[] Colors = {"red", "green", "blue"};
-    try
-    {
-      cp = new IloCP();
-      IloIntVar WesternAustralia = cp.intVar(0, 3);
-      IloIntVar NorthernTerritory = cp.intVar(0, 3);
-      IloIntVar SouthAustralia = cp.intVar(0, 3);
-      IloIntVar Queensland = cp.intVar(0, 3);
-      IloIntVar NewSouthWales = cp.intVar(0, 3);
-      IloIntVar Victoria = cp.intVar(0, 3);
-
-      IloIntExpr[] clique1 = new IloIntExpr[3];
-      clique1[0] = WesternAustralia;
-      clique1[1] = NorthernTerritory;
-      clique1[2] = SouthAustralia;
-
-      IloIntExpr[] clique2 = new IloIntExpr[3];
-      clique2[0] = Queensland;
-      clique2[1] = NorthernTerritory;
-      clique2[2] = SouthAustralia;
-
-      IloIntExpr[] clique3 = new IloIntExpr[3];
-      clique3[0] = Queensland;
-      clique3[1] = NewSouthWales;
-      clique3[2] = SouthAustralia;
-
-      IloIntExpr[] clique4 = new IloIntExpr[3];
-      clique4[0] = Queensland;
-      clique4[1] = Victoria;
-      clique4[2] = SouthAustralia;
-
-      cp.add(cp.allDiff(clique1));
-      cp.add(cp.allDiff(clique2));
-      cp.add(cp.allDiff(clique3));
-      cp.add(cp.allDiff(clique4));
-
-	  cp.setParameter(IloCP.IntParam.Workers, 1);
-      cp.setParameter(IloCP.DoubleParam.TimeLimit, 300);
-	  cp.setParameter(IloCP.IntParam.SearchType, IloCP.ParameterValues.DepthFirst);
-
-      if (cp.solve())
-      {
-         System.out.println();
-         System.out.println( "WesternAustralia:    " + Colors[(int)cp.getValue(WesternAustralia)]);
-         System.out.println( "NorthernTerritory:   " + Colors[(int)cp.getValue(NorthernTerritory)]);
-         System.out.println( "SouthAustralia:      " + Colors[(int)cp.getValue(SouthAustralia)]);
-         System.out.println( "Queensland:          " + Colors[(int)cp.getValue(Queensland)]);
-         System.out.println( "NewSouthWales:       " + Colors[(int)cp.getValue(NewSouthWales)]);
-         System.out.println( "Victoria:            " + Colors[(int)cp.getValue(Victoria)]);
-      }
-      else
-      {
-        System.out.println("No Solution found!");
-      }
-    } catch (IloException e)
-    {
-      System.out.println("Error: " + e);
-    }
-  }
-
-  void solveAustraliaBinary()
-  {
-    String[] Colors = {"red", "green", "blue"};
-    try
-    {
-      cp = new IloCP();
-      IloIntVar WesternAustralia = cp.intVar(0, 3);
-      IloIntVar NorthernTerritory = cp.intVar(0, 3);
-      IloIntVar SouthAustralia = cp.intVar(0, 3);
-      IloIntVar Queensland = cp.intVar(0, 3);
-      IloIntVar NewSouthWales = cp.intVar(0, 3);
-      IloIntVar Victoria = cp.intVar(0, 3);
-
-      cp.add(cp.neq(WesternAustralia , NorthernTerritory));
-      cp.add(cp.neq(WesternAustralia , SouthAustralia));
-      cp.add(cp.neq(NorthernTerritory , SouthAustralia));
-      cp.add(cp.neq(NorthernTerritory , Queensland));
-      cp.add(cp.neq(SouthAustralia , Queensland));
-      cp.add(cp.neq(SouthAustralia , NewSouthWales));
-      cp.add(cp.neq(SouthAustralia , Victoria));
-      cp.add(cp.neq(Queensland , NewSouthWales));
-      cp.add(cp.neq(NewSouthWales , Victoria));
-
-	  cp.setParameter(IloCP.IntParam.Workers, 1);
-      cp.setParameter(IloCP.DoubleParam.TimeLimit, 300);
-	  cp.setParameter(IloCP.IntParam.SearchType, IloCP.ParameterValues.DepthFirst);
-
-      if (cp.solve())
-      {
-         System.out.println();
-         System.out.println( "WesternAustralia:    " + Colors[(int)cp.getValue(WesternAustralia)]);
-         System.out.println( "NorthernTerritory:   " + Colors[(int)cp.getValue(NorthernTerritory)]);
-         System.out.println( "SouthAustralia:      " + Colors[(int)cp.getValue(SouthAustralia)]);
-         System.out.println( "Queensland:          " + Colors[(int)cp.getValue(Queensland)]);
-         System.out.println( "NewSouthWales:       " + Colors[(int)cp.getValue(NewSouthWales)]);
-         System.out.println( "Victoria:            " + Colors[(int)cp.getValue(Victoria)]);
-      }
-      else
-      {
-        System.out.println("No Solution found!");
-      }
-    } catch (IloException e)
-    {
-      System.out.println("Error: " + e);
-    }
-  }
-
-  void solveSendMoreMoney()
-  {
-    try
-    {
-      // CP Solver
-      cp = new IloCP();
-
-      // SEND MORE MONEY
-      IloIntVar S = cp.intVar(1, 9);
-      IloIntVar E = cp.intVar(0, 9);
-      IloIntVar N = cp.intVar(0, 9);
-      IloIntVar D = cp.intVar(0, 9);
-      IloIntVar M = cp.intVar(1, 9);
-      IloIntVar O = cp.intVar(0, 9);
-      IloIntVar R = cp.intVar(0, 9);
-      IloIntVar Y = cp.intVar(0, 9);
-
-      IloIntVar[] vars = new IloIntVar[]{S, E, N, D, M, O, R, Y};
-      cp.add(cp.allDiff(vars));
-
-      //                1000 * S + 100 * E + 10 * N + D
-      //              + 1000 * M + 100 * O + 10 * R + E
-      //  = 10000 * M + 1000 * O + 100 * N + 10 * E + Y
-
-      IloIntExpr SEND = cp.sum(cp.prod(1000, S), cp.sum(cp.prod(100, E), cp.sum(cp.prod(10, N), D)));
-      IloIntExpr MORE   = cp.sum(cp.prod(1000, M), cp.sum(cp.prod(100, O), cp.sum(cp.prod(10,R), E)));
-      IloIntExpr MONEY  = cp.sum(cp.prod(10000, M), cp.sum(cp.prod(1000, O), cp.sum(cp.prod(100, N), cp.sum(cp.prod(10,E), Y))));
-
-      cp.add(cp.eq(MONEY, cp.sum(SEND, MORE)));
-
-      // Solver parameters
-      cp.setParameter(IloCP.IntParam.Workers, 1);
-      cp.setParameter(IloCP.IntParam.SearchType, IloCP.ParameterValues.DepthFirst);
-      if(cp.solve())
-      {
-        System.out.println("  " + cp.getValue(S) + " " + cp.getValue(E) + " " + cp.getValue(N) + " " + cp.getValue(D));
-        System.out.println("  " + cp.getValue(M) + " " + cp.getValue(O) + " " + cp.getValue(R) + " " + cp.getValue(E));
-        System.out.println(cp.getValue(M) + " " + cp.getValue(O) + " " + cp.getValue(N) + " " + cp.getValue(E) + " " + cp.getValue(Y));
-      }
-      else
-      {
-        System.out.println("No Solution!");
-      }
-    } catch (IloException e)
-    {
-      System.out.println("Error: " + e);
     }
   }
 
@@ -411,43 +282,72 @@ public class CPInstance
     }
   }
 
-  String getSolution() {
-    int[][] beginED = new int[numEmployees][numDays];
-    int[][] endED = new int[numEmployees][numDays];
+  String verifyAndGetSolution() {
+    int[] totalNightShifts = new int[numEmployees];
+    int[][] numEmployeesWorking = new int[numDays][numShifts];
+    int numWeeks = numDays / 7;
+    int[][] weeklyWork = new int[numWeeks][numEmployees];
 
     StringBuilder sb = new StringBuilder();
     for (int i = 0; i < numDays; i++) {
       if (i > 0) sb.append(" ");
+
+      int operation = 0;
       for (int j = 0; j < numEmployees; j++) {
         if (j > 0) sb.append(" ");
+
         EmployeeState state = matrix[j][i];
+
+        int length = (int)cp.getValue(state.length);
+        operation += length;
+        weeklyWork[i/7][j] += length;
+
         int shift = (int)cp.getValue(state.shift);
-        int start, end;
+        numEmployeesWorking[i][shift] += 1;
+
+        int start;
         switch (shift) {
           case 0:
-            start = end = -1;
+            assert length == 0;
+            start = -1;
             break;
-          case 1:
-            start = 8;
-            end = start + (int)cp.getValue(state.length);
+          case 1: // NIGHT_SHIFT
+            assert length >= minConsecutiveWork && length <= maxDailyWork;
+            assert (int)cp.getValue(matrix[j][i-1].shift) != 1;
+            assert ++totalNightShifts[j] <= maxTotalNightShift;
+            start = 0;
             break;
           case 2:
-            start = 16;
-            end = start + (int)cp.getValue(state.length);
+            assert length >= minConsecutiveWork && length <= maxDailyWork;
+            start = 8;
             break;
           case 3:
-            start = 0;
-            end = start + (int)cp.getValue(state.length);
+            assert length >= minConsecutiveWork && length <= maxDailyWork;
+            start = 16;
             break;
           default:
             throw new IllegalStateException(String.format("shift assigned value of %d", shift));
         }
-        beginED[j][i] = start;
-        endED[j][i] = end;
+        int end = start + length;
+
         sb.append(String.format("%d %d", start, end));
       }
+
+      assert operation >= minDailyOperation;
     }
-    prettyPrint(numEmployees, numDays, beginED, endED);
+
+    for (int i = 0; i < numDays; i++) {
+      for (int j = 0; j < numShifts; j++) {
+        assert numEmployeesWorking[i][j] >= minDemandDayShift[i][j];
+      }
+    }
+
+    for (int i = 0; i < numWeeks; i++) {
+      for (int j = 0; j < numEmployees; j++) {
+        assert weeklyWork[i][j] >= minWeeklyWork;
+      }
+    }
+
     return sb.toString();
   }
 }
