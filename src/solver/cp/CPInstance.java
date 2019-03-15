@@ -228,7 +228,7 @@ public class CPInstance
 
     IloVarSelector[] varSelector = new IloVarSelector[3];
     varSelector[0] = cp.selectSmallest(cp.domainSize());
-    varSelector[1] = cp.selectSmallest(cp.varImpact());
+    varSelector[1] = cp.selectLargest(cp.varImpact());
     varSelector[2] = cp.selectRandomVar();
 
     IloValueSelector valueSelector = cp.selectLargest(cp.value());
