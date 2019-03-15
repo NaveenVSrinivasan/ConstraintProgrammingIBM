@@ -11,7 +11,7 @@ public class EmployeeState {
 
     // (shift == 0) <=> (length == 0)
     instance.cp.add(instance.cp.equiv(
-      instance.cp.eq(shift, 0),
+      instance.cp.eq(shift, instance.OFF_SHIFT),
       instance.cp.eq(length, 0))
     );
 

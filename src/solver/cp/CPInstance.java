@@ -21,8 +21,10 @@ public class CPInstance
   int numEmployees;
   int numShifts;
   int numIntervalsInDay;
+  int maxShiftLength;
   int[][] minDemandDayShift;
   int minDailyOperation;
+  final int OFF_SHIFT = 0;
   final int NIGHT_SHIFT = 1;
 
   // EMPLOYEE parameters
@@ -112,6 +114,8 @@ public class CPInstance
       System.out.println("Error: file not found " + fileName);
     }
 
+    maxShiftLength = numIntervalsInDay / (numShifts - 1);
+
     lengths = new int[(maxDailyWork-minConsecutiveWork)+2];
     lengths[0] = 0;
     for (int i = 1; i < lengths.length; i++) {
@@ -130,18 +134,18 @@ public class CPInstance
       }
     }
 
-    // Break symmetry
-    {
-      IloIntVar[][] shifts = new IloIntVar[numEmployees][numDays];
-      for (int i = 0; i < numEmployees; i++) {
-        for (int j = 0; j < numDays; j++) {
-          shifts[i][j] = matrix[i][j].shift;
-        }
-        if (i > 0) {
-          cp.add(cp.lexicographic(shifts[i], shifts[i-1]));
-        }
-      }
-    }
+    // // Break symmetry
+    // {
+    //   IloIntVar[][] shifts = new IloIntVar[numEmployees][numDays];
+    //   for (int i = 0; i < numEmployees; i++) {
+    //     for (int j = 0; j < numDays; j++) {
+    //       shifts[i][j] = matrix[i][j].shift;
+    //     }
+    //     if (i > 0) {
+    //       cp.add(cp.lexicographic(shifts[i], shifts[i-1]));
+    //     }
+    //   }
+    // }
 
     // Training requirement
     for (int i = 0; i < numEmployees; i++) {
@@ -283,68 +287,55 @@ public class CPInstance
   }
 
   String verifyAndGetSolution() {
-    int[] totalNightShifts = new int[numEmployees];
+    int[] operation = new int[numDays];
     int[][] numEmployeesWorking = new int[numDays][numShifts];
-    int numWeeks = numDays / 7;
-    int[][] weeklyWork = new int[numWeeks][numEmployees];
 
     StringBuilder sb = new StringBuilder();
-    for (int i = 0; i < numDays; i++) {
+    for (int i = 0; i < numEmployees; i++) {
       if (i > 0) sb.append(" ");
 
-      int operation = 0;
-      for (int j = 0; j < numEmployees; j++) {
+      int totalNightShifts = 0;
+      int[] weeklyWork = new int[numWeeks];
+
+      for (int j = 0; j < numDays; j++) {
         if (j > 0) sb.append(" ");
 
-        EmployeeState state = matrix[j][i];
+        EmployeeState state = matrix[i][j];
 
         int length = (int)cp.getValue(state.length);
-        operation += length;
-        weeklyWork[i/7][j] += length;
+        assert (length == 0) || (length >= minConsecutiveWork && length <= maxDailyWork);
+        operation[j] += length;
+        weeklyWork[j/7] += length;
 
         int shift = (int)cp.getValue(state.shift);
-        numEmployeesWorking[i][shift] += 1;
-
-        int start;
-        switch (shift) {
-          case 0:
-            assert length == 0;
-            start = -1;
-            break;
-          case 1: // NIGHT_SHIFT
-            assert length >= minConsecutiveWork && length <= maxDailyWork;
-            assert (int)cp.getValue(matrix[j][i-1].shift) != 1;
-            assert ++totalNightShifts[j] <= maxTotalNightShift;
-            start = 0;
-            break;
-          case 2:
-            assert length >= minConsecutiveWork && length <= maxDailyWork;
-            start = 8;
-            break;
-          case 3:
-            assert length >= minConsecutiveWork && length <= maxDailyWork;
-            start = 16;
-            break;
-          default:
-            throw new IllegalStateException(String.format("shift assigned value of %d", shift));
+        assert shift >= 0 && shift < numShifts;
+        if (shift == NIGHT_SHIFT) {
+          assert ++totalNightShifts <= maxTotalNightShift;
+          assert (int)cp.getValue(matrix[i][j-1].shift) != NIGHT_SHIFT;
         }
+        numEmployeesWorking[j][shift]++;
+
+        if (shift == OFF_SHIFT) {
+          assert length == 0;
+        } else {
+          assert length >= minConsecutiveWork && length <= maxDailyWork;
+        }
+        int start = shift == OFF_SHIFT ? -1 : (shift - 1) * maxShiftLength;
         int end = start + length;
 
         sb.append(String.format("%d %d", start, end));
       }
 
-      assert operation >= minDailyOperation;
-    }
-
-    for (int i = 0; i < numDays; i++) {
-      for (int j = 0; j < numShifts; j++) {
-        assert numEmployeesWorking[i][j] >= minDemandDayShift[i][j];
+      assert totalNightShifts >= 1 && totalNightShifts <= maxTotalNightShift;
+      for (int j = 0; j < numWeeks; j++) {
+        assert weeklyWork[j] >= minWeeklyWork && weeklyWork[j] <= maxWeeklyWork;
       }
     }
 
-    for (int i = 0; i < numWeeks; i++) {
-      for (int j = 0; j < numEmployees; j++) {
-        assert weeklyWork[i][j] >= minWeeklyWork;
+    for (int i = 0; i < numDays; i++) {
+      assert operation[i] >= minDailyOperation;
+      for (int j = 0; j < numShifts; j++) {
+        assert numEmployeesWorking[i][j] >= minDemandDayShift[i][j];
       }
     }
 
